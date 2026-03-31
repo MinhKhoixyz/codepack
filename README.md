@@ -1,6 +1,5 @@
 <div align="center">
   <h1>XYZ Project Mapper 🗺️</h1>
-  <p><b>The ultimate context-packing tool for AI Assistants (ChatGPT, Claude, Gemini)</b></p>
   
   [![Deploy Status](https://github.com/MinhKhoixyz/xyz-project-mapper/actions/workflows/deploy.yml/badge.svg)](https://github.com/MinhKhoixyz/xyz-project-mapper/actions)
 </div>
@@ -22,9 +21,9 @@ Providing context to Large Language Models (LLMs) can be painful. You can't just
 ### 🔥 Key Features
 
 - 🔒 **Privacy First (Zero Backend):** Uses the modern `File System Access API`. Your code never leaves your machine. It's processed 100% locally in your browser.
-- 🌳 **Smart ASCII Tree:** Automatically generates a visual structure of your project, skipping heavy folders like `node_modules` or `.git`.
-- 🎯 **Selective Export:** Don't bloat your prompt! Check only the files you want the AI to analyze.
-- 💅 **Modern IDE-like UI:** Sleek dark mode interface inspired by modern editors, ensuring a smooth developer experience.
+- 🌳 **Smart ASCII Tree:** Automatically generates a visual structure of your project, intelligently sorting directories above files (IDE-style) while skipping heavy folders like `node_modules` or `.git`.
+- 🎯 **Selective & Bulk Export:** Don't bloat your prompt! Check only the files you want the AI to analyze. Use the quick action button on any folder to instantly select or deselect all its contents.
+- 💅 **Modern IDE-like UI:** Sleek dark mode interface featuring a smooth resizable sidebar, custom scrollbars, and intuitive Lucide icons, ensuring a premium developer experience.
 
 ## 🛠️ Tech Stack
 
@@ -33,11 +32,11 @@ Providing context to Large Language Models (LLMs) can be painful. You can't just
 - **Core API:** `window.showDirectoryPicker()`
 - **CI/CD:** GitHub Actions & GitHub Pages
 
-## 💻 How to Use (Local Development)
+## 💻 Local Development
 
-If you want to run or modify the code yourself:
+This project is pure frontend with no complex build steps required. To run or modify the code locally:
 
-1. Clone this repository:
+1. **Clone this repository:**
    ```bash
    git clone [https://github.com/MinhKhoixyz/xyz-project-mapper.git](https://github.com/MinhKhoixyz/xyz-project-mapper.git)
    ```
