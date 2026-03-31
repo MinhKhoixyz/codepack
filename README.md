@@ -3,8 +3,6 @@
   <p><b>The ultimate context-packing tool for AI Assistants (ChatGPT, Claude, Gemini)</b></p>
   
   [![Deploy Status](https://github.com/MinhKhoixyz/xyz-project-mapper/actions/workflows/deploy.yml/badge.svg)](https://github.com/MinhKhoixyz/xyz-project-mapper/actions)
-  [![Vue.js](https://img.shields.io/badge/Vue.js-3.0-4FC08D?logo=vue.js)](https://vuejs.org/)
-  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 </div>
 
 ## 🚀 Live Demo

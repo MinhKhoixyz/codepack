@@ -1,15 +1,18 @@
 const { createApp, ref, onMounted, nextTick } = Vue;
 
-// Hàm hỗ trợ render icon Lucide sau khi DOM update
+// Optimized icon refresh - prevents full DOM scan freeze
+let iconTimeout;
 const refreshIcons = () => {
-  nextTick(() => {
-    if (window.lucide) {
-      window.lucide.createIcons();
-    }
-  });
+  clearTimeout(iconTimeout);
+  iconTimeout = setTimeout(() => {
+    nextTick(() => {
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+    });
+  }, 10);
 };
 
-// 1. COMPONENT: File Tree (Đã "độ" UI)
 const FileTree = {
   name: "file-tree",
   props: ["nodes", "selectedPaths"],
@@ -20,13 +23,37 @@ const FileTree = {
           class="node-content" 
           :class="{ 'is-selected': node.kind === 'file' && selectedPaths.includes(node.path) }"
           @click="handleInteraction(node)"
+          :title="node.name"
         >
-          <i v-if="node.kind === 'directory'" :data-lucide="isExpanded(node) ? 'folder-open' : 'folder'" class="icon-sm"></i>
-          <i v-else data-lucide="file-code-2" class="icon-sm"></i>
+          <span v-if="node.kind === 'directory'" :key="'chevron-' + isExpanded(node)" class="icon-wrapper">
+            <i :data-lucide="isExpanded(node) ? 'chevron-down' : 'chevron-right'" class="icon-sm"></i>
+          </span>
+          <span v-else class="icon-spacer"></span>
+
+          <span v-if="node.kind === 'directory'" :key="'folder-' + isExpanded(node)" class="icon-wrapper">
+            <i :data-lucide="isExpanded(node) ? 'folder-open' : 'folder'" class="icon-sm"></i>
+          </span>
+          <span v-else class="icon-wrapper">
+            <i data-lucide="file-code-2" class="icon-sm"></i>
+          </span>
           
           <span class="node-name">{{ node.name }}</span>
           
-          <input type="checkbox" v-if="node.kind === 'file'" class="file-checkbox" :checked="selectedPaths.includes(node.path)" />
+          <span v-if="node.kind === 'file'" :key="'fcheck-' + selectedPaths.includes(node.path)" class="icon-wrapper" style="margin-left: auto;">
+            <i :data-lucide="selectedPaths.includes(node.path) ? 'check-square' : 'square'" 
+               class="icon-sm" 
+               :class="{ 'icon-checked': selectedPaths.includes(node.path) }">
+            </i>
+          </span>
+
+          <span v-if="node.kind === 'directory'" class="folder-action" @click.stop="$emit('toggle-folder', node)" title="Select/Deselect all files in folder">
+            <span :key="'dcheck-' + isAllSelected(node)" class="icon-wrapper">
+              <i :data-lucide="isAllSelected(node) ? 'check-square' : 'square'" 
+                 class="icon-sm" 
+                 :class="{ 'icon-checked': isAllSelected(node) }">
+              </i>
+            </span>
+          </span>
         </div>
         
         <file-tree 
@@ -35,35 +62,50 @@ const FileTree = {
           :selected-paths="selectedPaths"
           @select="$emit('select', $event)"
           @toggle="$emit('toggle', $event)"
+          @toggle-folder="$emit('toggle-folder', $event)"
         ></file-tree>
       </li>
     </ul>
   `,
   setup(props, { emit }) {
-    const expandedNodes = ref(new Set());
+    const expandedNodes = ref([]);
 
-    const isExpanded = (node) => expandedNodes.value.has(node.path);
+    const isExpanded = (node) => expandedNodes.value.includes(node.path);
+
+    const isAllSelected = (node) => {
+      if (node.kind !== "directory" || !node.children) return false;
+
+      let files = [];
+      const getFiles = (n) => {
+        if (n.kind === "file") files.push(n);
+        else if (n.children) n.children.forEach(getFiles);
+      };
+
+      getFiles(node);
+
+      if (files.length === 0) return false;
+      return files.every((f) => props.selectedPaths.includes(f.path));
+    };
 
     const handleInteraction = (node) => {
       if (node.kind === "directory") {
-        if (isExpanded(node)) {
-          expandedNodes.value.delete(node.path);
+        const idx = expandedNodes.value.indexOf(node.path);
+        if (idx > -1) {
+          expandedNodes.value.splice(idx, 1);
         } else {
-          expandedNodes.value.add(node.path);
+          expandedNodes.value.push(node.path);
         }
-        refreshIcons(); // Render lại icon folder đóng/mở
+        refreshIcons();
       } else {
-        // Thay vì chỉ preview, ta tích chọn luôn khi click vào dòng
         emit("toggle", node);
         emit("select", node);
       }
     };
 
-    return { isExpanded, handleInteraction };
+    return { isExpanded, handleInteraction, isAllSelected };
   },
 };
 
-// 2. MAIN APP
 const app = createApp({
   setup() {
     const rootHandle = ref(null);
@@ -76,8 +118,35 @@ const app = createApp({
     const selectedPaths = ref([]);
     const selectedNodes = ref([]);
 
+    // --- MAIN FLOW: RESIZABLE SIDEBAR ---
+    const sidebarWidth = ref(320);
+    const isResizing = ref(false);
+
+    const startResize = () => {
+      isResizing.value = true;
+      document.addEventListener("mousemove", doResize);
+      document.addEventListener("mouseup", stopResize);
+      // Optional: bind class to body for global cursor change
+      document.body.classList.add("is-resizing");
+    };
+
+    const doResize = (e) => {
+      if (!isResizing.value) return;
+      let newWidth = e.clientX;
+      if (newWidth < 200) newWidth = 200; // Min bounds
+      if (newWidth > 800) newWidth = 800; // Max bounds
+      sidebarWidth.value = newWidth;
+    };
+
+    const stopResize = () => {
+      isResizing.value = false;
+      document.removeEventListener("mousemove", doResize);
+      document.removeEventListener("mouseup", stopResize);
+      document.body.classList.remove("is-resizing");
+    };
+
     onMounted(() => {
-      refreshIcons(); // Render icon lần đầu
+      refreshIcons();
     });
 
     const selectFolder = async () => {
@@ -101,7 +170,6 @@ const app = createApp({
           },
         ];
 
-        // Tự động mở folder gốc
         setTimeout(() => {
           const rootNode = document.querySelector(".node-content");
           if (rootNode) rootNode.click();
@@ -113,8 +181,8 @@ const app = createApp({
 
     const scanDirectory = async (handle, parentPath = "") => {
       const nodes = [];
+
       for await (const entry of handle.values()) {
-        // List bỏ qua chuẩn
         if (
           entry.name === "node_modules" ||
           entry.name === ".git" ||
@@ -138,12 +206,18 @@ const app = createApp({
         }
         nodes.push(node);
       }
-      return nodes.sort(
-        (a, b) => b.kind.localeCompare(a.kind) || a.name.localeCompare(b.name),
-      );
+
+      return nodes.sort((a, b) => {
+        if (a.kind !== b.kind) {
+          return a.kind === "directory" ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        });
+      });
     };
 
-    // Hàm tích chọn: Click vào dòng là tích luôn
     const toggleSelection = (node) => {
       const idx = selectedPaths.value.indexOf(node.path);
       if (idx > -1) {
@@ -156,6 +230,46 @@ const app = createApp({
         selectedPaths.value.push(node.path);
         selectedNodes.value.push(node);
       }
+      refreshIcons();
+    };
+
+    const getAllFilesInFolder = (node) => {
+      let files = [];
+      if (node.kind === "file") {
+        files.push(node);
+      } else if (node.kind === "directory" && node.children) {
+        node.children.forEach((child) => {
+          files = files.concat(getAllFilesInFolder(child));
+        });
+      }
+      return files;
+    };
+
+    const toggleFolderSelection = (folderNode) => {
+      const allFiles = getAllFilesInFolder(folderNode);
+      if (allFiles.length === 0) return;
+
+      const allSelected = allFiles.every((f) =>
+        selectedPaths.value.includes(f.path),
+      );
+
+      if (allSelected) {
+        const pathsToRemove = new Set(allFiles.map((f) => f.path));
+        selectedPaths.value = selectedPaths.value.filter(
+          (p) => !pathsToRemove.has(p),
+        );
+        selectedNodes.value = selectedNodes.value.filter(
+          (n) => !pathsToRemove.has(n.path),
+        );
+      } else {
+        allFiles.forEach((f) => {
+          if (!selectedPaths.value.includes(f.path)) {
+            selectedPaths.value.push(f.path);
+            selectedNodes.value.push(f);
+          }
+        });
+      }
+      refreshIcons();
     };
 
     const previewFile = async (node) => {
@@ -163,7 +277,7 @@ const app = createApp({
         try {
           fileContent.value = "// Loading file content...";
           const file = await node.handle.getFile();
-          selectedFileName.value = node.path; // Hiện full path cho 'xịn'
+          selectedFileName.value = node.path;
           fileContent.value = await file.text();
         } catch (e) {
           fileContent.value =
@@ -172,14 +286,13 @@ const app = createApp({
       }
     };
 
-    // Sơ đồ ASCII xịn hơn
     const generateTreeString = (nodes, prefix = "") => {
       let result = "";
+
       nodes.forEach((node, index) => {
         const isLast = index === nodes.length - 1;
         const connector = isLast ? "└── " : "├── ";
 
-        // Đánh dấu file nào được chọn trong sơ đồ
         const selectionMarker =
           node.kind === "file" && selectedPaths.value.includes(node.path)
             ? " [SELECTED] "
@@ -192,6 +305,7 @@ const app = createApp({
           result += generateTreeString(node.children, newPrefix);
         }
       });
+
       return result;
     };
 
@@ -223,13 +337,12 @@ const app = createApp({
           "// No specific files selected to export. Project structure only.";
       }
 
-      // Reset preview
       fileContent.value = "// Export complete. See downloaded file.";
 
-      // Download
       const blob = new Blob([finalContent], {
         type: "text/plain;charset=utf-8",
       });
+
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -245,9 +358,13 @@ const app = createApp({
       fileContent,
       selectedPaths,
       selectedNodes,
+      sidebarWidth,
+      isResizing,
+      startResize,
       selectFolder,
       previewFile,
       toggleSelection,
+      toggleFolderSelection,
       exportForAI,
     };
   },
