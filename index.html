@@ -15,7 +15,7 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
   </head>
-  <body>
+  <body :class="{ 'is-resizing': isResizing }">
     <div id="app" class="container" v-cloak>
       <header class="main-header">
         <div class="logo-area">
@@ -42,15 +42,18 @@
         </div>
 
         <div v-else class="editor-layout">
-          <aside class="sidebar">
+          <aside class="sidebar" :style="{ width: sidebarWidth + 'px' }">
             <div class="sidebar-header">PROJECT EXPLORER</div>
             <file-tree
               :nodes="projectTree"
               :selected-paths="selectedPaths"
               @select="previewFile"
               @toggle="toggleSelection"
+              @toggle-folder="toggleFolderSelection"
             ></file-tree>
           </aside>
+
+          <div class="resizer" @mousedown="startResize"></div>
 
           <section class="preview-panel">
             <div class="toolbar">
