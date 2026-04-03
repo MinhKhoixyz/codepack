@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XYZ Project Mapper 🗺️</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="assets/css/style.css" />
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body :class="{ 'is-resizing': isResizing }">
+    <div id="app" class="container" v-cloak>
+      <header class="main-header">
+        <div class="logo-area">
+          <i data-lucide="map-pinned" class="logo-icon"></i>
+          <div>
+            <h1>XYZ Project Mapper</h1>
+          </div>
+        </div>
+        <button v-if="rootHandle" class="btn-primary" @click="selectFolder">
+          <i data-lucide="folder-sync"></i> Change Folder
+        </button>
+      </header>
+
+      <main class="workspace">
+        <div v-if="!rootHandle" class="welcome-area">
+          <div class="welcome-card">
+            <i data-lucide="folder-search" class="welcome-icon"></i>
+            <h2>Map Your Project</h2>
+            <p>Select your root directory</p>
+            <button class="btn-lg" @click="selectFolder">
+              <i data-lucide="folder-open"></i> Open Project Folder
+            </button>
+          </div>
+        </div>
+
+        <div v-else class="editor-layout">
+          <aside class="sidebar" :style="{ width: sidebarWidth + 'px' }">
+            <div class="sidebar-header">PROJECT EXPLORER</div>
+            <file-tree
+              :nodes="projectTree"
+              :selected-paths="selectedPaths"
+              @select="previewFile"
+              @toggle="toggleSelection"
+              @toggle-folder="toggleFolderSelection"
+            ></file-tree>
+          </aside>
+
+          <div class="resizer" @mousedown="startResize"></div>
+
+          <section class="preview-panel">
+            <div class="toolbar">
+              <div class="file-info">
+                <i data-lucide="file-text" class="icon-sm"></i>
+                <span class="file-name"
+                  >{{ selectedFileName || 'Select a file' }}</span
+                >
+              </div>
+
+              <div class="action-group">
+                <span v-if="selectedNodes.length > 0" class="selection-count">
+                  📦 {{ selectedNodes.length }} files selected
+                </span>
+                <button
+                  class="btn-export"
+                  @click="exportForAI"
+                  :disabled="!rootHandle"
+                >
+                  <i data-lucide="package-export"></i>
+                  Export {{ selectedNodes.length > 0 ? 'Selected' : 'Context' }}
+                </button>
+              </div>
+            </div>
+            <div class="code-viewer-container">
+              <pre class="code-viewer"><code>{{ fileContent }}</code></pre>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script src="assets/js/app.js"></script>
+  </body>
+</html>
