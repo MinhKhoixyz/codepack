@@ -46,7 +46,7 @@ const FileTree = {
             </i>
           </span>
 
-          <span v-if="node.kind === 'directory'" class="folder-action" @click.stop="$emit('toggle-folder', node)" title="Select/Deselect all files in folder">
+          <span v-if="node.kind === 'directory'" class="folder-action" @click.stop="$emit('toggle-folder', node)" title="Select/Deselect all safe files in folder">
             <span :key="'dcheck-' + isAllSelected(node)" class="icon-wrapper">
               <i :data-lucide="isAllSelected(node) ? 'check-square' : 'square'" 
                  class="icon-sm" 
@@ -80,11 +80,34 @@ const FileTree = {
         if (n.kind === "file") files.push(n);
         else if (n.children) n.children.forEach(getFiles);
       };
-
       getFiles(node);
 
       if (files.length === 0) return false;
-      return files.every((f) => props.selectedPaths.includes(f.path));
+
+      // Determine selection state based only on non-blacklisted files
+      const safeFiles = files.filter((f) => {
+        const ext = f.name.toLowerCase();
+        // Basic inline check for UI state
+        return ![
+          ".png",
+          ".jpg",
+          ".jpeg",
+          ".gif",
+          ".svg",
+          ".ico",
+          ".pdf",
+          ".zip",
+          ".rar",
+          ".exe",
+          ".jar",
+          ".class",
+          ".mp4",
+          ".mp3",
+        ].some((e) => ext.endsWith(e));
+      });
+
+      if (safeFiles.length === 0) return false;
+      return safeFiles.every((f) => props.selectedPaths.includes(f.path));
     };
 
     const handleInteraction = (node) => {
@@ -112,11 +135,67 @@ const app = createApp({
     const projectTree = ref([]);
     const selectedFileName = ref("");
     const fileContent = ref(
-      "// Welcome to XYZ Project Mapper.\n// Click Open Project Folder to begin.\n// Click on a file path to both preview it and select it for AI Export.\n// Selected files will appear blue.",
+      "// Welcome to XYZ Project Mapper.\n// Click Open Project Folder to begin.\n// Click on a file path to preview and select it for AI Export.\n// Selected files will be highlighted.",
     );
 
     const selectedPaths = ref([]);
     const selectedNodes = ref([]);
+
+    // --- BLACKLIST LOGIC ---
+    const blacklistExts = [
+      // Images & Graphics
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".gif",
+      ".svg",
+      ".ico",
+      ".webp",
+      ".bmp",
+      ".psd",
+      ".ai",
+      // Fonts
+      ".ttf",
+      ".woff",
+      ".woff2",
+      ".eot",
+      ".otf",
+      // Archives, Executables & System files
+      ".zip",
+      ".rar",
+      ".7z",
+      ".tar",
+      ".gz",
+      ".exe",
+      ".dll",
+      ".so",
+      ".bin",
+      ".msi",
+      ".DS_Store",
+      // Audio & Video
+      ".mp4",
+      ".mp3",
+      ".wav",
+      ".avi",
+      ".mkv",
+      ".mov",
+      ".flv",
+      // Databases, PDFs & Build artifacts
+      ".class",
+      ".jar",
+      ".war",
+      ".ear",
+      ".sqlite",
+      ".db",
+      ".pdf",
+      ".docx",
+      ".xlsx",
+    ];
+
+    const isSafeToRead = (fileName) => {
+      const lowerName = fileName.toLowerCase();
+      return !blacklistExts.some((ext) => lowerName.endsWith(ext));
+    };
 
     // --- MAIN FLOW: RESIZABLE SIDEBAR ---
     const sidebarWidth = ref(320);
@@ -126,15 +205,14 @@ const app = createApp({
       isResizing.value = true;
       document.addEventListener("mousemove", doResize);
       document.addEventListener("mouseup", stopResize);
-      // Optional: bind class to body for global cursor change
       document.body.classList.add("is-resizing");
     };
 
     const doResize = (e) => {
       if (!isResizing.value) return;
       let newWidth = e.clientX;
-      if (newWidth < 200) newWidth = 200; // Min bounds
-      if (newWidth > 800) newWidth = 800; // Max bounds
+      if (newWidth < 200) newWidth = 200;
+      if (newWidth > 800) newWidth = 800;
       sidebarWidth.value = newWidth;
     };
 
@@ -181,7 +259,6 @@ const app = createApp({
 
     const scanDirectory = async (handle, parentPath = "") => {
       const nodes = [];
-
       for await (const entry of handle.values()) {
         if (
           entry.name === "node_modules" ||
@@ -247,14 +324,19 @@ const app = createApp({
 
     const toggleFolderSelection = (folderNode) => {
       const allFiles = getAllFilesInFolder(folderNode);
-      if (allFiles.length === 0) return;
 
-      const allSelected = allFiles.every((f) =>
+      // FILTER: Keep only readable/safe files
+      const safeFiles = allFiles.filter((f) => isSafeToRead(f.name));
+
+      if (safeFiles.length === 0) return;
+
+      const allSelected = safeFiles.every((f) =>
         selectedPaths.value.includes(f.path),
       );
 
       if (allSelected) {
-        const pathsToRemove = new Set(allFiles.map((f) => f.path));
+        // Deselect all safe files
+        const pathsToRemove = new Set(safeFiles.map((f) => f.path));
         selectedPaths.value = selectedPaths.value.filter(
           (p) => !pathsToRemove.has(p),
         );
@@ -262,7 +344,8 @@ const app = createApp({
           (n) => !pathsToRemove.has(n.path),
         );
       } else {
-        allFiles.forEach((f) => {
+        // Select all safe files
+        safeFiles.forEach((f) => {
           if (!selectedPaths.value.includes(f.path)) {
             selectedPaths.value.push(f.path);
             selectedNodes.value.push(f);
@@ -278,6 +361,13 @@ const app = createApp({
           fileContent.value = "// Loading file content...";
           const file = await node.handle.getFile();
           selectedFileName.value = node.path;
+
+          // Block reading blacklisted files
+          if (!isSafeToRead(file.name)) {
+            fileContent.value = `// ⚠️ Preview skipped: File [${file.name}] is an unsupported format (Blacklisted).`;
+            return;
+          }
+
           fileContent.value = await file.text();
         } catch (e) {
           fileContent.value =
@@ -288,7 +378,6 @@ const app = createApp({
 
     const generateTreeString = (nodes, prefix = "") => {
       let result = "";
-
       nodes.forEach((node, index) => {
         const isLast = index === nodes.length - 1;
         const connector = isLast ? "└── " : "├── ";
@@ -305,7 +394,6 @@ const app = createApp({
           result += generateTreeString(node.children, newPrefix);
         }
       });
-
       return result;
     };
 
@@ -324,9 +412,16 @@ const app = createApp({
         for (const node of selectedNodes.value) {
           try {
             const file = await node.handle.getFile();
-            const text = await file.text();
             finalContent += `--- Start of file: ${node.path} ---\n`;
-            finalContent += text + "\n";
+
+            // Double-check during export to ensure binary files are ignored
+            if (!isSafeToRead(file.name)) {
+              finalContent += `// ⚠️ Content skipped: File format is blacklisted.\n`;
+            } else {
+              const text = await file.text();
+              finalContent += text + "\n";
+            }
+
             finalContent += `--- End of file: ${node.path} ---\n\n`;
           } catch (e) {
             finalContent += `--- Start of file: ${node.path} ---\n// ⚠️ Cannot read binary file.\n--- End of file: ${node.path} ---\n\n`;
@@ -342,7 +437,6 @@ const app = createApp({
       const blob = new Blob([finalContent], {
         type: "text/plain;charset=utf-8",
       });
-
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
