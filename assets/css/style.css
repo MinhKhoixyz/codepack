@@ -679,3 +679,12 @@ button:active {
   transform: none !important;
   text-shadow: none;
 }
+
+/* ---------- HEADER ACTIONS ---------- */
+.header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+

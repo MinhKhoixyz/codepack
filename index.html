@@ -24,9 +24,14 @@
             <h1>XYZ Project Mapper</h1>
           </div>
         </div>
-        <button v-if="rootHandle" class="btn-primary" @click="selectFolder">
-          <i data-lucide="folder-sync"></i> Change Folder
-        </button>
+        <div class="header-actions">
+          <button v-if="rootHandle" class="btn-primary" @click="exportArchitectureMap">
+            <i data-lucide="network"></i> Arch Map
+          </button>
+          <button v-if="rootHandle" class="btn-primary" @click="selectFolder">
+            <i data-lucide="folder-sync"></i> Change Folder
+          </button>
+        </div>
       </header>
 
       <main class="workspace">
