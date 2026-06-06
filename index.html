@@ -10,6 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap"
       rel="stylesheet"
     />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
 
     <link rel="stylesheet" href="assets/css/style.css" />
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
@@ -25,7 +26,11 @@
           </div>
         </div>
         <div class="header-actions">
-          <button v-if="rootHandle" class="btn-primary" @click="exportArchitectureMap">
+          <button
+            v-if="rootHandle"
+            class="btn-primary"
+            @click="exportArchitectureMap"
+          >
             <i data-lucide="network"></i> Arch Map
           </button>
           <button v-if="rootHandle" class="btn-primary" @click="selectFolder">
@@ -48,14 +53,39 @@
 
         <div v-else class="editor-layout">
           <aside class="sidebar" :style="{ width: sidebarWidth + 'px' }">
-            <div class="sidebar-header">PROJECT EXPLORER</div>
-            <file-tree
-              :nodes="projectTree"
-              :selected-paths="selectedPaths"
-              @select="previewFile"
-              @toggle="toggleSelection"
-              @toggle-folder="toggleFolderSelection"
-            ></file-tree>
+            <div class="sidebar-header">
+              <h3><i data-lucide="folder-tree"></i> Project Files</h3>
+            </div>
+            <div class="tree-container">
+              <file-tree
+                v-if="projectTree.length > 0"
+                :nodes="projectTree"
+                :selected-paths="selectedPaths"
+                @select="previewFile"
+                @toggle="toggleSelection"
+                @toggle-folder="toggleFolderSelection"
+              ></file-tree>
+              <div v-else class="empty-state">
+                <i data-lucide="folder-open"></i>
+                <p>No folder selected</p>
+              </div>
+            </div>
+
+            <!-- Token Estimator -->
+            <div v-if="projectTree.length > 0" class="token-estimator">
+              <div class="estimator-row">
+                <span class="label">Selected</span>
+                <span class="value highlight">{{ selectedNodes.length }} files</span>
+              </div>
+              <div class="estimator-row">
+                <span class="label">Est. Tokens</span>
+                <span class="value">{{ estimatedTokens.toLocaleString() }}</span>
+              </div>
+              <div class="estimator-row">
+                <span class="label">Cost (GPT-4o)</span>
+                <span class="value money">~${{ estimatedCostGPT4o.toFixed(4) }}</span>
+              </div>
+            </div>
           </aside>
 
           <div class="resizer" @mousedown="startResize"></div>
@@ -84,13 +114,15 @@
               </div>
             </div>
             <div class="code-viewer-container">
-              <pre class="code-viewer"><code>{{ fileContent }}</code></pre>
+              <pre class="code-viewer"><code :class="currentLanguage">{{ fileContent }}</code></pre>
             </div>
           </section>
         </div>
       </main>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-autoloader.min.js"></script>
     <script src="assets/js/app.js"></script>
   </body>
 </html>

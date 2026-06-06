@@ -141,6 +141,29 @@ const app = createApp({
     const selectedPaths = ref([]);
     const selectedNodes = ref([]);
 
+    const currentLanguage = ref('language-javascript');
+
+    const estimatedTokens = ref(0);
+    const estimatedCostGPT4o = ref(0);
+
+    const calculateMetrics = async () => {
+      let totalBytes = 0;
+      for (const node of selectedNodes.value) {
+        if (node.kind === 'file') {
+          try {
+            if (!isSafeToRead(node.name)) continue;
+            const file = await node.handle.getFile();
+            totalBytes += file.size;
+          } catch(e) {
+            // ignore
+          }
+        }
+      }
+      const tokens = Math.ceil(totalBytes / 3.5);
+      estimatedTokens.value = tokens;
+      estimatedCostGPT4o.value = (tokens / 1000000) * 5.0;
+    };
+
     const exportArchitectureMap = async () => {
       if (!rootHandle.value) return;
 
@@ -396,6 +419,7 @@ const app = createApp({
         selectedNodes.value.push(node);
       }
       refreshIcons();
+      calculateMetrics();
     };
 
     const getAllFilesInFolder = (node) => {
@@ -441,6 +465,7 @@ const app = createApp({
         });
       }
       refreshIcons();
+      calculateMetrics();
     };
 
     const previewFile = async (node) => {
@@ -457,6 +482,25 @@ const app = createApp({
           }
 
           fileContent.value = await file.text();
+          
+          // Determine language for Prism
+          const ext = node.name.split('.').pop().toLowerCase();
+          const langMap = {
+            'js': 'javascript', 'jsx': 'jsx', 'ts': 'typescript', 'tsx': 'tsx',
+            'html': 'html', 'css': 'css', 'json': 'json', 'md': 'markdown',
+            'py': 'python', 'java': 'java', 'go': 'go', 'rs': 'rust',
+            'php': 'php', 'rb': 'ruby', 'cs': 'csharp', 'cpp': 'cpp', 'c': 'c',
+            'yaml': 'yaml', 'yml': 'yaml', 'xml': 'xml', 'sh': 'bash', 'sql': 'sql',
+            'vue': 'javascript' // fallback for vue
+          };
+          currentLanguage.value = `language-${langMap[ext] || 'javascript'}`;
+          
+          Vue.nextTick(() => {
+            if (window.Prism) {
+              window.Prism.highlightAll();
+            }
+          });
+          
         } catch (e) {
           fileContent.value =
             "// ⚠️ Cannot preview this file type (Image, PDF, or Binary).";
@@ -491,12 +535,11 @@ const app = createApp({
       fileContent.value =
         "// Generating export file... this might take a moment if many files are selected.";
 
-      let finalContent =
-        "🗂️ PROJECT STRUCTURE:\n" +
-        generateTreeString(projectTree.value) +
-        "\n\n";
+      let finalContent = "";
 
       if (selectedNodes.value.length > 0) {
+        // Chỉ xuất code chi tiết, KHÔNG xuất cây thư mục để tiết kiệm Token
+        finalContent += `📦 EXPORTED FILES (${selectedNodes.value.length}):\n\n`;
         for (const node of selectedNodes.value) {
           try {
             const file = await node.handle.getFile();
@@ -504,20 +547,22 @@ const app = createApp({
 
             // Double-check during export to ensure binary files are ignored
             if (!isSafeToRead(file.name)) {
-              finalContent += `// ⚠️ Content skipped: File format is blacklisted.\n`;
+              finalContent += `[Preview skipped: Unsupported or binary format]\n`;
             } else {
               const text = await file.text();
               finalContent += text + "\n";
             }
-
-            finalContent += `--- End of file: ${node.path} ---\n\n`;
+            finalContent += `--- End of file ---\n\n`;
           } catch (e) {
-            finalContent += `--- Start of file: ${node.path} ---\n// ⚠️ Cannot read binary file.\n--- End of file: ${node.path} ---\n\n`;
+            finalContent += `[Error reading file]\n\n`;
           }
         }
       } else {
-        finalContent +=
-          "// No specific files selected to export. Project structure only.";
+        // Nếu không chọn file nào, xuất cây thư mục mặc định
+        finalContent =
+          "🗂️ PROJECT STRUCTURE:\n" +
+          generateTreeString(projectTree.value) +
+          "\n\n";
       }
 
       fileContent.value = "// Export complete. See downloaded file.";
@@ -549,6 +594,9 @@ const app = createApp({
       toggleFolderSelection,
       exportForAI,
       exportArchitectureMap,
+      estimatedTokens,
+      estimatedCostGPT4o,
+      currentLanguage,
     };
   },
 });
