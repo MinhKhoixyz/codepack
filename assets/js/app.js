@@ -144,6 +144,14 @@ const app = createApp({
     const currentLanguage = ref('language-javascript');
 
     const blockEnvFiles = ref(true);
+    const customIgnores = ref("target, __pycache__, build, .next");
+    const showSettings = ref(false);
+
+    const applySettings = async () => {
+      if (rootHandle.value) {
+        await reScanFolder();
+      }
+    };
 
     const reScanFolder = async () => {
       if (!rootHandle.value) return;
@@ -383,13 +391,16 @@ const app = createApp({
 
     const scanDirectory = async (handle, parentPath = "") => {
       const nodes = [];
+      const ignoreList = customIgnores.value.split(',').map(i => i.trim()).filter(Boolean);
+
       for await (const entry of handle.values()) {
         if (
           entry.name === "node_modules" ||
           entry.name === ".git" ||
           entry.name === "dist" ||
           entry.name === ".idea" ||
-          entry.name === ".vscode"
+          entry.name === ".vscode" ||
+          ignoreList.includes(entry.name)
         )
           continue;
 
@@ -612,6 +623,9 @@ const app = createApp({
       exportForAI,
       exportArchitectureMap,
       blockEnvFiles,
+      customIgnores,
+      showSettings,
+      applySettings,
       reScanFolder,
       currentLanguage,
     };

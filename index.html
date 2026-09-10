@@ -28,6 +28,9 @@
           </div>
         </div>
         <div class="header-actions">
+          <button class="btn-primary" @click="showSettings = true">
+            <i data-lucide="settings-2"></i> Settings
+          </button>
           <button
             v-if="rootHandle"
             class="btn-primary"
@@ -40,6 +43,56 @@
           </button>
         </div>
       </header>
+
+      <!-- Settings Modal -->
+      <div v-if="showSettings" class="modal-overlay" @click.self="showSettings = false">
+        <div class="modal-panel">
+          <div class="modal-header">
+            <div class="modal-title">
+              <i data-lucide="settings-2"></i>
+              <span>Filter Settings</span>
+            </div>
+            <button class="modal-close" @click="showSettings = false">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+
+          <div class="modal-body">
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Hide .env files</span>
+                <span class="setting-desc">Prevent accidental leaks of environment secrets</span>
+              </div>
+              <label class="toggle-switch" title="Hide .env files to prevent accidental leaks">
+                <input type="checkbox" v-model="blockEnvFiles" @change="applySettings" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row setting-row--col">
+              <div class="setting-info">
+                <span class="setting-label">Custom Ignore Patterns</span>
+                <span class="setting-desc">Comma-separated directory/file names to exclude from the tree</span>
+              </div>
+              <input
+                type="text"
+                v-model="customIgnores"
+                class="setting-input"
+                placeholder="e.g. target, __pycache__, build, .next"
+              />
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn-primary" @click="showSettings = false">
+              <i data-lucide="x"></i> Cancel
+            </button>
+            <button class="btn-export" @click="applySettings(); showSettings = false">
+              <i data-lucide="check"></i> Apply
+            </button>
+          </div>
+        </div>
+      </div>
 
       <main class="workspace">
         <div v-if="!rootHandle" class="welcome-area">
@@ -57,21 +110,6 @@
           <aside class="sidebar" :style="{ width: sidebarWidth + 'px' }">
             <div class="sidebar-header">
               <h3><i data-lucide="folder-tree"></i> Project Files</h3>
-            </div>
-
-            <div v-if="projectTree.length > 0" class="sidebar-filters">
-              <label
-                class="toggle-switch"
-                title="Hide .env files to prevent accidental leaks"
-              >
-                <input
-                  type="checkbox"
-                  v-model="blockEnvFiles"
-                  @change="reScanFolder"
-                />
-                <span class="toggle-slider"></span>
-              </label>
-              <span class="filter-label">Hide env files</span>
             </div>
 
             <div class="tree-container">
