@@ -94,6 +94,49 @@
         </div>
       </div>
 
+      <!-- Export Modal -->
+      <div v-if="showExportModal" class="modal-overlay" @click.self="showExportModal = false">
+        <div class="modal-panel">
+          <div class="modal-header">
+            <div class="modal-title">
+              <i data-lucide="package-export"></i>
+              <span>Export Context</span>
+            </div>
+            <button class="modal-close" @click="showExportModal = false">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+
+          <div class="modal-body">
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Format</span>
+                <span class="setting-desc">Choose the output format for the LLM</span>
+              </div>
+              <select v-model="exportFormat" class="setting-input" style="width: 150px; cursor: pointer;">
+                <option value="txt">Plain Text (.txt)</option>
+                <option value="md">Markdown (.md)</option>
+                <option value="xml">XML Tags (.xml)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="modal-footer" style="justify-content: space-between;">
+            <button class="btn-primary" @click="copyExport">
+              <i data-lucide="copy"></i> Copy to Clipboard
+            </button>
+            <div style="display: flex; gap: 12px;">
+              <button class="btn-primary" @click="showExportModal = false">
+                <i data-lucide="x"></i> Cancel
+              </button>
+              <button class="btn-export" @click="downloadExport">
+                <i data-lucide="download"></i> Download
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <main class="workspace">
         <div v-if="!rootHandle" class="welcome-area">
           <div class="welcome-card">
@@ -155,7 +198,7 @@
                 </span>
                 <button
                   class="btn-export"
-                  @click="exportForAI"
+                  @click="showExportModal = true"
                   :disabled="!rootHandle"
                 >
                   <i data-lucide="package-export"></i>

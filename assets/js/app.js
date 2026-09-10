@@ -146,6 +146,9 @@ const app = createApp({
     const blockEnvFiles = ref(true);
     const customIgnores = ref("target, __pycache__, build, .next");
     const showSettings = ref(false);
+    
+    const showExportModal = ref(false);
+    const exportFormat = ref("txt");
 
     const applySettings = async () => {
       if (rootHandle.value) {
@@ -542,12 +545,7 @@ const app = createApp({
         const isLast = index === nodes.length - 1;
         const connector = isLast ? "└── " : "├── ";
 
-        const selectionMarker =
-          node.kind === "file" && selectedPaths.value.includes(node.path)
-            ? " [SELECTED] "
-            : " ";
-
-        result += `${prefix}${connector}${node.name}${selectionMarker}\n`;
+        result += `${prefix}${connector}${node.name}\n`;
 
         if (node.kind === "directory" && node.children) {
           const newPrefix = prefix + (isLast ? "    " : "│   ");
@@ -557,53 +555,106 @@ const app = createApp({
       return result;
     };
 
-    const exportForAI = async () => {
-      if (!rootHandle.value) return;
-
-      fileContent.value =
-        "// Generating export file... this might take a moment if many files are selected.";
-
+    const generateExportContent = async () => {
+      if (!rootHandle.value) return "";
+      
+      fileContent.value = "// Generating export content... this might take a moment if many files are selected.";
       let finalContent = "";
+      const format = exportFormat.value;
 
       if (selectedNodes.value.length > 0) {
-        // Chỉ xuất code chi tiết, KHÔNG xuất cây thư mục để tiết kiệm Token
-        finalContent += `📦 EXPORTED FILES (${selectedNodes.value.length}):\n\n`;
+        if (format === 'xml') {
+          finalContent += `<documents count="${selectedNodes.value.length}">\n\n`;
+        } else if (format === 'md') {
+          finalContent += `# EXPORTED FILES (${selectedNodes.value.length})\n\n`;
+        } else {
+          finalContent += `📦 EXPORTED FILES (${selectedNodes.value.length}):\n\n`;
+        }
+
         for (const node of selectedNodes.value) {
           try {
             const file = await node.handle.getFile();
-            finalContent += `--- Start of file: ${node.path} ---\n`;
+            
+            if (format === 'xml') {
+              finalContent += `<document path="${node.path}">\n`;
+            } else if (format === 'md') {
+              const ext = node.name.split('.').pop();
+              finalContent += `## \`${node.path}\`\n\`\`\`${ext}\n`;
+            } else {
+              finalContent += `--- Start of file: ${node.path} ---\n`;
+            }
 
-            // Double-check during export to ensure binary files are ignored
             if (!isSafeToRead(file.name)) {
-              finalContent += `[Preview skipped: Unsupported or binary format]\n`;
+              if (format === 'xml') finalContent += `<!-- Preview skipped: Unsupported or binary format -->\n`;
+              else finalContent += `[Preview skipped: Unsupported or binary format]\n`;
             } else {
               const text = await file.text();
-              finalContent += text + "\n";
+              if (format === 'xml') {
+                finalContent += `<![CDATA[\n${text}\n]]>\n`;
+              } else {
+                finalContent += text + (text.endsWith('\n') ? "" : "\n");
+              }
             }
-            finalContent += `--- End of file ---\n\n`;
+            
+            if (format === 'xml') {
+              finalContent += `</document>\n\n`;
+            } else if (format === 'md') {
+              finalContent += `\`\`\`\n\n`;
+            } else {
+              finalContent += `--- End of file ---\n\n`;
+            }
           } catch (e) {
-            finalContent += `[Error reading file]\n\n`;
+            if (format === 'xml') finalContent += `<!-- Error reading file -->\n\n`;
+            else finalContent += `[Error reading file]\n\n`;
           }
         }
+        
+        if (format === 'xml') {
+          finalContent += `</documents>\n`;
+        }
       } else {
-        // Nếu không chọn file nào, xuất cây thư mục mặc định
-        finalContent =
-          "🗂️ PROJECT STRUCTURE:\n" +
-          generateTreeString(projectTree.value) +
-          "\n\n";
+        const treeStr = generateTreeString(projectTree.value);
+        if (format === 'xml') {
+          finalContent = `<project-structure>\n<![CDATA[\n${treeStr}]]>\n</project-structure>\n\n`;
+        } else if (format === 'md') {
+          finalContent = `# 🗂️ PROJECT STRUCTURE\n\`\`\`text\n${treeStr}\`\`\`\n\n`;
+        } else {
+          finalContent = "🗂️ PROJECT STRUCTURE:\n" + treeStr + "\n\n";
+        }
       }
+      
+      return finalContent;
+    };
 
-      fileContent.value = "// Export complete. See downloaded file.";
-
-      const blob = new Blob([finalContent], {
-        type: "text/plain;charset=utf-8",
-      });
+    const downloadExport = async () => {
+      const content = await generateExportContent();
+      if (!content) return;
+      
+      const ext = exportFormat.value;
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `MapperProject_${rootHandle.value.name}.txt`;
+      link.download = `MapperProject_${rootHandle.value.name}.${ext}`;
       link.click();
       URL.revokeObjectURL(url);
+      
+      fileContent.value = `// Export complete. File downloaded as .${ext}`;
+      showExportModal.value = false;
+    };
+
+    const copyExport = async () => {
+      const content = await generateExportContent();
+      if (!content) return;
+      
+      try {
+        await navigator.clipboard.writeText(content);
+        fileContent.value = "// Context successfully copied to clipboard!";
+      } catch (err) {
+        console.error('Failed to copy: ', err);
+        fileContent.value = "// Error: Failed to copy to clipboard.";
+      }
+      showExportModal.value = false;
     };
 
     return {
@@ -620,7 +671,10 @@ const app = createApp({
       previewFile,
       toggleSelection,
       toggleFolderSelection,
-      exportForAI,
+      showExportModal,
+      exportFormat,
+      downloadExport,
+      copyExport,
       exportArchitectureMap,
       blockEnvFiles,
       customIgnores,
