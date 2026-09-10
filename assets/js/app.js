@@ -143,25 +143,38 @@ const app = createApp({
 
     const currentLanguage = ref('language-javascript');
 
-    const estimatedTokens = ref(0);
-    const estimatedCostGPT4o = ref(0);
+    const blockEnvFiles = ref(true);
 
-    const calculateMetrics = async () => {
-      let totalBytes = 0;
-      for (const node of selectedNodes.value) {
-        if (node.kind === 'file') {
-          try {
-            if (!isSafeToRead(node.name)) continue;
-            const file = await node.handle.getFile();
-            totalBytes += file.size;
-          } catch(e) {
-            // ignore
-          }
-        }
+    const reScanFolder = async () => {
+      if (!rootHandle.value) return;
+      
+      fileContent.value = "// Filter applied. Project folder re-scanned.";
+      const children = await scanDirectory(rootHandle.value, rootHandle.value.name);
+      projectTree.value = [
+        {
+          name: rootHandle.value.name,
+          kind: "directory",
+          path: rootHandle.value.name,
+          handle: rootHandle.value,
+          children: children,
+        },
+      ];
+      
+      // Remove blocked files from current selection to preserve UX
+      if (blockEnvFiles.value) {
+        const isBlocked = (name) => name === ".env" || (name.startsWith(".env.") && name !== ".env.example");
+        
+        selectedPaths.value = selectedPaths.value.filter(path => {
+          const parts = path.split('/');
+          return !isBlocked(parts[parts.length - 1]);
+        });
+        
+        selectedNodes.value = selectedNodes.value.filter(node => {
+          return !isBlocked(node.name);
+        });
       }
-      const tokens = Math.ceil(totalBytes / 3.5);
-      estimatedTokens.value = tokens;
-      estimatedCostGPT4o.value = (tokens / 1000000) * 5.0;
+      
+      refreshIcons();
     };
 
     const exportArchitectureMap = async () => {
@@ -380,6 +393,12 @@ const app = createApp({
         )
           continue;
 
+        if (blockEnvFiles.value && entry.kind === "file") {
+          if (entry.name === ".env" || (entry.name.startsWith(".env.") && entry.name !== ".env.example")) {
+            continue;
+          }
+        }
+
         const currentPath = `${parentPath}/${entry.name}`;
 
         const node = {
@@ -419,7 +438,6 @@ const app = createApp({
         selectedNodes.value.push(node);
       }
       refreshIcons();
-      calculateMetrics();
     };
 
     const getAllFilesInFolder = (node) => {
@@ -465,7 +483,6 @@ const app = createApp({
         });
       }
       refreshIcons();
-      calculateMetrics();
     };
 
     const previewFile = async (node) => {
@@ -594,8 +611,8 @@ const app = createApp({
       toggleFolderSelection,
       exportForAI,
       exportArchitectureMap,
-      estimatedTokens,
-      estimatedCostGPT4o,
+      blockEnvFiles,
+      reScanFolder,
       currentLanguage,
     };
   },
