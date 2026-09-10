@@ -10,7 +10,10 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+      rel="stylesheet"
+    />
 
     <link rel="stylesheet" href="assets/css/style.css" />
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
@@ -20,12 +23,14 @@
     <div id="app" class="container" v-cloak>
       <header class="main-header">
         <div class="logo-area">
-          <i data-lucide="map-pinned" class="logo-icon"></i>
           <div>
             <h1>XYZ Project Mapper</h1>
           </div>
         </div>
         <div class="header-actions">
+          <button class="btn-primary" @click="showSettings = true">
+            <i data-lucide="settings-2"></i> Settings
+          </button>
           <button
             v-if="rootHandle"
             class="btn-primary"
@@ -38,6 +43,99 @@
           </button>
         </div>
       </header>
+
+      <!-- Settings Modal -->
+      <div v-if="showSettings" class="modal-overlay" @click.self="showSettings = false">
+        <div class="modal-panel">
+          <div class="modal-header">
+            <div class="modal-title">
+              <i data-lucide="settings-2"></i>
+              <span>Filter Settings</span>
+            </div>
+            <button class="modal-close" @click="showSettings = false">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+
+          <div class="modal-body">
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Hide .env files</span>
+                <span class="setting-desc">Prevent accidental leaks of environment secrets</span>
+              </div>
+              <label class="toggle-switch" title="Hide .env files to prevent accidental leaks">
+                <input type="checkbox" v-model="blockEnvFiles" @change="applySettings" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row setting-row--col">
+              <div class="setting-info">
+                <span class="setting-label">Custom Ignore Patterns</span>
+                <span class="setting-desc">Comma-separated directory/file names to exclude from the tree</span>
+              </div>
+              <input
+                type="text"
+                v-model="customIgnores"
+                class="setting-input"
+                placeholder="e.g. target, __pycache__, build, .next"
+              />
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn-primary" @click="showSettings = false">
+              <i data-lucide="x"></i> Cancel
+            </button>
+            <button class="btn-export" @click="applySettings(); showSettings = false">
+              <i data-lucide="check"></i> Apply
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Export Modal -->
+      <div v-if="showExportModal" class="modal-overlay" @click.self="showExportModal = false">
+        <div class="modal-panel">
+          <div class="modal-header">
+            <div class="modal-title">
+              <i data-lucide="package-export"></i>
+              <span>Export Context</span>
+            </div>
+            <button class="modal-close" @click="showExportModal = false">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+
+          <div class="modal-body">
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Format</span>
+                <span class="setting-desc">Choose the output format for the LLM</span>
+              </div>
+              <select v-model="exportFormat" class="setting-input" style="width: 150px; cursor: pointer;">
+                <option value="txt">Plain Text (.txt)</option>
+                <option value="md">Markdown (.md)</option>
+                <option value="xml">XML Tags (.xml)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="modal-footer" style="justify-content: space-between;">
+            <button class="btn-primary" @click="copyExport">
+              <i data-lucide="copy"></i> Copy to Clipboard
+            </button>
+            <div style="display: flex; gap: 12px;">
+              <button class="btn-primary" @click="showExportModal = false">
+                <i data-lucide="x"></i> Cancel
+              </button>
+              <button class="btn-export" @click="downloadExport">
+                <i data-lucide="download"></i> Download
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <main class="workspace">
         <div v-if="!rootHandle" class="welcome-area">
@@ -56,6 +154,7 @@
             <div class="sidebar-header">
               <h3><i data-lucide="folder-tree"></i> Project Files</h3>
             </div>
+
             <div class="tree-container">
               <file-tree
                 v-if="projectTree.length > 0"
@@ -71,19 +170,13 @@
               </div>
             </div>
 
-            <!-- Token Estimator -->
+            <!-- Selection Info -->
             <div v-if="projectTree.length > 0" class="token-estimator">
               <div class="estimator-row">
                 <span class="label">Selected</span>
-                <span class="value highlight">{{ selectedNodes.length }} files</span>
-              </div>
-              <div class="estimator-row">
-                <span class="label">Est. Tokens</span>
-                <span class="value">{{ estimatedTokens.toLocaleString() }}</span>
-              </div>
-              <div class="estimator-row">
-                <span class="label">Cost (GPT-4o)</span>
-                <span class="value money">~${{ estimatedCostGPT4o.toFixed(4) }}</span>
+                <span class="value highlight"
+                  >{{ selectedNodes.length }} files</span
+                >
               </div>
             </div>
           </aside>
@@ -105,7 +198,7 @@
                 </span>
                 <button
                   class="btn-export"
-                  @click="exportForAI"
+                  @click="showExportModal = true"
                   :disabled="!rootHandle"
                 >
                   <i data-lucide="package-export"></i>
@@ -114,7 +207,9 @@
               </div>
             </div>
             <div class="code-viewer-container">
-              <pre class="code-viewer"><code :class="currentLanguage">{{ fileContent }}</code></pre>
+              <pre
+                class="code-viewer"
+              ><code :class="currentLanguage">{{ fileContent }}</code></pre>
             </div>
           </section>
         </div>

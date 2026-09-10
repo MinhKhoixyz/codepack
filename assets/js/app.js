@@ -143,25 +143,49 @@ const app = createApp({
 
     const currentLanguage = ref('language-javascript');
 
-    const estimatedTokens = ref(0);
-    const estimatedCostGPT4o = ref(0);
+    const blockEnvFiles = ref(true);
+    const customIgnores = ref("target, __pycache__, build, .next");
+    const showSettings = ref(false);
+    
+    const showExportModal = ref(false);
+    const exportFormat = ref("txt");
 
-    const calculateMetrics = async () => {
-      let totalBytes = 0;
-      for (const node of selectedNodes.value) {
-        if (node.kind === 'file') {
-          try {
-            if (!isSafeToRead(node.name)) continue;
-            const file = await node.handle.getFile();
-            totalBytes += file.size;
-          } catch(e) {
-            // ignore
-          }
-        }
+    const applySettings = async () => {
+      if (rootHandle.value) {
+        await reScanFolder();
       }
-      const tokens = Math.ceil(totalBytes / 3.5);
-      estimatedTokens.value = tokens;
-      estimatedCostGPT4o.value = (tokens / 1000000) * 5.0;
+    };
+
+    const reScanFolder = async () => {
+      if (!rootHandle.value) return;
+      
+      fileContent.value = "// Filter applied. Project folder re-scanned.";
+      const children = await scanDirectory(rootHandle.value, rootHandle.value.name);
+      projectTree.value = [
+        {
+          name: rootHandle.value.name,
+          kind: "directory",
+          path: rootHandle.value.name,
+          handle: rootHandle.value,
+          children: children,
+        },
+      ];
+      
+      // Remove blocked files from current selection to preserve UX
+      if (blockEnvFiles.value) {
+        const isBlocked = (name) => name === ".env" || (name.startsWith(".env.") && name !== ".env.example");
+        
+        selectedPaths.value = selectedPaths.value.filter(path => {
+          const parts = path.split('/');
+          return !isBlocked(parts[parts.length - 1]);
+        });
+        
+        selectedNodes.value = selectedNodes.value.filter(node => {
+          return !isBlocked(node.name);
+        });
+      }
+      
+      refreshIcons();
     };
 
     const exportArchitectureMap = async () => {
@@ -370,15 +394,24 @@ const app = createApp({
 
     const scanDirectory = async (handle, parentPath = "") => {
       const nodes = [];
+      const ignoreList = customIgnores.value.split(',').map(i => i.trim()).filter(Boolean);
+
       for await (const entry of handle.values()) {
         if (
           entry.name === "node_modules" ||
           entry.name === ".git" ||
           entry.name === "dist" ||
           entry.name === ".idea" ||
-          entry.name === ".vscode"
+          entry.name === ".vscode" ||
+          ignoreList.includes(entry.name)
         )
           continue;
+
+        if (blockEnvFiles.value && entry.kind === "file") {
+          if (entry.name === ".env" || (entry.name.startsWith(".env.") && entry.name !== ".env.example")) {
+            continue;
+          }
+        }
 
         const currentPath = `${parentPath}/${entry.name}`;
 
@@ -419,7 +452,6 @@ const app = createApp({
         selectedNodes.value.push(node);
       }
       refreshIcons();
-      calculateMetrics();
     };
 
     const getAllFilesInFolder = (node) => {
@@ -465,7 +497,6 @@ const app = createApp({
         });
       }
       refreshIcons();
-      calculateMetrics();
     };
 
     const previewFile = async (node) => {
@@ -514,12 +545,7 @@ const app = createApp({
         const isLast = index === nodes.length - 1;
         const connector = isLast ? "└── " : "├── ";
 
-        const selectionMarker =
-          node.kind === "file" && selectedPaths.value.includes(node.path)
-            ? " [SELECTED] "
-            : " ";
-
-        result += `${prefix}${connector}${node.name}${selectionMarker}\n`;
+        result += `${prefix}${connector}${node.name}\n`;
 
         if (node.kind === "directory" && node.children) {
           const newPrefix = prefix + (isLast ? "    " : "│   ");
@@ -529,53 +555,106 @@ const app = createApp({
       return result;
     };
 
-    const exportForAI = async () => {
-      if (!rootHandle.value) return;
-
-      fileContent.value =
-        "// Generating export file... this might take a moment if many files are selected.";
-
+    const generateExportContent = async () => {
+      if (!rootHandle.value) return "";
+      
+      fileContent.value = "// Generating export content... this might take a moment if many files are selected.";
       let finalContent = "";
+      const format = exportFormat.value;
 
       if (selectedNodes.value.length > 0) {
-        // Chỉ xuất code chi tiết, KHÔNG xuất cây thư mục để tiết kiệm Token
-        finalContent += `📦 EXPORTED FILES (${selectedNodes.value.length}):\n\n`;
+        if (format === 'xml') {
+          finalContent += `<documents count="${selectedNodes.value.length}">\n\n`;
+        } else if (format === 'md') {
+          finalContent += `# EXPORTED FILES (${selectedNodes.value.length})\n\n`;
+        } else {
+          finalContent += `📦 EXPORTED FILES (${selectedNodes.value.length}):\n\n`;
+        }
+
         for (const node of selectedNodes.value) {
           try {
             const file = await node.handle.getFile();
-            finalContent += `--- Start of file: ${node.path} ---\n`;
+            
+            if (format === 'xml') {
+              finalContent += `<document path="${node.path}">\n`;
+            } else if (format === 'md') {
+              const ext = node.name.split('.').pop();
+              finalContent += `## \`${node.path}\`\n\`\`\`${ext}\n`;
+            } else {
+              finalContent += `--- Start of file: ${node.path} ---\n`;
+            }
 
-            // Double-check during export to ensure binary files are ignored
             if (!isSafeToRead(file.name)) {
-              finalContent += `[Preview skipped: Unsupported or binary format]\n`;
+              if (format === 'xml') finalContent += `<!-- Preview skipped: Unsupported or binary format -->\n`;
+              else finalContent += `[Preview skipped: Unsupported or binary format]\n`;
             } else {
               const text = await file.text();
-              finalContent += text + "\n";
+              if (format === 'xml') {
+                finalContent += `<![CDATA[\n${text}\n]]>\n`;
+              } else {
+                finalContent += text + (text.endsWith('\n') ? "" : "\n");
+              }
             }
-            finalContent += `--- End of file ---\n\n`;
+            
+            if (format === 'xml') {
+              finalContent += `</document>\n\n`;
+            } else if (format === 'md') {
+              finalContent += `\`\`\`\n\n`;
+            } else {
+              finalContent += `--- End of file ---\n\n`;
+            }
           } catch (e) {
-            finalContent += `[Error reading file]\n\n`;
+            if (format === 'xml') finalContent += `<!-- Error reading file -->\n\n`;
+            else finalContent += `[Error reading file]\n\n`;
           }
         }
+        
+        if (format === 'xml') {
+          finalContent += `</documents>\n`;
+        }
       } else {
-        // Nếu không chọn file nào, xuất cây thư mục mặc định
-        finalContent =
-          "🗂️ PROJECT STRUCTURE:\n" +
-          generateTreeString(projectTree.value) +
-          "\n\n";
+        const treeStr = generateTreeString(projectTree.value);
+        if (format === 'xml') {
+          finalContent = `<project-structure>\n<![CDATA[\n${treeStr}]]>\n</project-structure>\n\n`;
+        } else if (format === 'md') {
+          finalContent = `# 🗂️ PROJECT STRUCTURE\n\`\`\`text\n${treeStr}\`\`\`\n\n`;
+        } else {
+          finalContent = "🗂️ PROJECT STRUCTURE:\n" + treeStr + "\n\n";
+        }
       }
+      
+      return finalContent;
+    };
 
-      fileContent.value = "// Export complete. See downloaded file.";
-
-      const blob = new Blob([finalContent], {
-        type: "text/plain;charset=utf-8",
-      });
+    const downloadExport = async () => {
+      const content = await generateExportContent();
+      if (!content) return;
+      
+      const ext = exportFormat.value;
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `MapperProject_${rootHandle.value.name}.txt`;
+      link.download = `MapperProject_${rootHandle.value.name}.${ext}`;
       link.click();
       URL.revokeObjectURL(url);
+      
+      fileContent.value = `// Export complete. File downloaded as .${ext}`;
+      showExportModal.value = false;
+    };
+
+    const copyExport = async () => {
+      const content = await generateExportContent();
+      if (!content) return;
+      
+      try {
+        await navigator.clipboard.writeText(content);
+        fileContent.value = "// Context successfully copied to clipboard!";
+      } catch (err) {
+        console.error('Failed to copy: ', err);
+        fileContent.value = "// Error: Failed to copy to clipboard.";
+      }
+      showExportModal.value = false;
     };
 
     return {
@@ -592,10 +671,16 @@ const app = createApp({
       previewFile,
       toggleSelection,
       toggleFolderSelection,
-      exportForAI,
+      showExportModal,
+      exportFormat,
+      downloadExport,
+      copyExport,
       exportArchitectureMap,
-      estimatedTokens,
-      estimatedCostGPT4o,
+      blockEnvFiles,
+      customIgnores,
+      showSettings,
+      applySettings,
+      reScanFolder,
       currentLanguage,
     };
   },
