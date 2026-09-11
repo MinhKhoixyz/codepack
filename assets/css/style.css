@@ -97,6 +97,8 @@ body.is-resizing {
   color: var(--accent);
   filter: drop-shadow(0 0 12px var(--accent-glow));
   animation: floatIcon 3s ease-in-out infinite alternate;
+  /* PERF: promote to own compositor layer */
+  will-change: transform;
 }
 
 @keyframes floatIcon {
@@ -155,6 +157,8 @@ body.is-resizing {
   animation: meshFlow 20s ease-in-out infinite alternate;
   z-index: 0;
   pointer-events: none;
+  /* PERF: hint browser to promote to own layer for smoother animation */
+  will-change: transform;
 }
 
 @keyframes meshFlow {
@@ -991,5 +995,108 @@ button:active {
   gap: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(0, 0, 0, 0.15);
+}
+
+/* ---------- ACCESSIBILITY & PERFORMANCE ---------- */
+/* Disable heavy animations for users who prefer reduced motion.
+   Also benefits low-power devices and prevents unnecessary GPU usage. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .workspace::before {
+    animation: none;
+  }
+
+  .logo-icon {
+    animation: none;
+  }
+
+  .editor-layout {
+    animation: none;
+  }
+
+  .welcome-area {
+    animation: none;
+  }
+}
+
+/* ---------- IGNORE TAG CHIP INPUT ---------- */
+.ignore-tags-container {
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  cursor: text;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ignore-tags-container:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+}
+
+.ignore-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 10px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(129, 140, 248, 0.15));
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: var(--font-code);
+  font-weight: 500;
+  color: var(--accent);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.ignore-tag:hover {
+  background: linear-gradient(135deg, rgba(255, 80, 80, 0.2), rgba(255, 120, 80, 0.15));
+  border-color: rgba(255, 100, 100, 0.4);
+  color: #ff8080;
+}
+
+.ignore-tag:hover .ignore-tag-x {
+  color: #ff5555;
+}
+
+.ignore-tag-x {
+  font-size: 14px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.3);
+  transition: color 0.15s ease;
+  font-style: normal;
+}
+
+.ignore-tag-input {
+  flex: 1;
+  min-width: 100px;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-main);
+  font-family: var(--font-code);
+  font-size: 13px;
+  padding: 3px 4px;
+}
+
+.ignore-tag-input::placeholder {
+  color: rgba(148, 163, 184, 0.35);
 }
 

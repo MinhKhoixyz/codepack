@@ -17,7 +17,7 @@
 
     <link rel="stylesheet" href="assets/css/style.css" />
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@0.525.0"></script>
   </head>
   <body :class="{ 'is-resizing': isResizing }">
     <div id="app" class="container" v-cloak>
@@ -28,7 +28,7 @@
           </div>
         </div>
         <div class="header-actions">
-          <button class="btn-primary" @click="showSettings = true">
+          <button class="btn-primary" @click="openSettings">
             <i data-lucide="settings-2"></i> Settings
           </button>
           <button
@@ -72,14 +72,27 @@
             <div class="setting-row setting-row--col">
               <div class="setting-info">
                 <span class="setting-label">Custom Ignore Patterns</span>
-                <span class="setting-desc">Comma-separated directory/file names to exclude from the tree</span>
+                <span class="setting-desc">Click a tag to remove · Press Enter or comma to add</span>
               </div>
-              <input
-                type="text"
-                v-model="customIgnores"
-                class="setting-input"
-                placeholder="e.g. target, __pycache__, build, .next"
-              />
+              <div class="ignore-tags-container" @click="$refs.ignoreInputRef.focus()">
+                <span
+                  v-for="(tag, index) in draftIgnoreTags"
+                  :key="tag"
+                  class="ignore-tag"
+                  @click.stop="removeIgnoreTag(index)"
+                  title="Click to remove"
+                >
+                  {{ tag }}<span class="ignore-tag-x">×</span>
+                </span>
+                <input
+                  ref="ignoreInputRef"
+                  type="text"
+                  v-model="draftIgnoreInput"
+                  class="ignore-tag-input"
+                  placeholder="Add pattern..."
+                  @keydown="handleIgnoreKeydown"
+                />
+              </div>
             </div>
           </div>
 
@@ -160,6 +173,7 @@
                 v-if="projectTree.length > 0"
                 :nodes="projectTree"
                 :selected-paths="selectedPaths"
+                :selected-paths-set="selectedPathsSet"
                 @select="previewFile"
                 @toggle="toggleSelection"
                 @toggle-folder="toggleFolderSelection"

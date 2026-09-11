@@ -1,6 +1,6 @@
-const { createApp, ref, onMounted, nextTick } = Vue;
+const { createApp, ref, computed, onMounted, nextTick } = Vue;
 
-// Optimized icon refresh - prevents full DOM scan freeze
+// Optimized icon refresh - debounced, prevents full DOM scan freeze
 let iconTimeout;
 const refreshIcons = () => {
   clearTimeout(iconTimeout);
@@ -15,13 +15,14 @@ const refreshIcons = () => {
 
 const FileTree = {
   name: "file-tree",
-  props: ["nodes", "selectedPaths"],
+  // PERF: selectedPathsSet is a Set (O(1) has) derived from selectedPaths
+  props: ["nodes", "selectedPaths", "selectedPathsSet"],
   template: `
     <ul class="tree-list">
       <li v-for="node in nodes" :key="node.path" class="tree-node">
         <div 
           class="node-content" 
-          :class="{ 'is-selected': node.kind === 'file' && selectedPaths.includes(node.path) }"
+          :class="{ 'is-selected': node.kind === 'file' && selectedPathsSet.has(node.path) }"
           @click="handleInteraction(node)"
           :title="node.name"
         >
@@ -39,10 +40,10 @@ const FileTree = {
           
           <span class="node-name">{{ node.name }}</span>
           
-          <span v-if="node.kind === 'file'" :key="'fcheck-' + selectedPaths.includes(node.path)" class="icon-wrapper" style="margin-left: auto;">
-            <i :data-lucide="selectedPaths.includes(node.path) ? 'check-square' : 'square'" 
+          <span v-if="node.kind === 'file'" :key="'fcheck-' + selectedPathsSet.has(node.path)" class="icon-wrapper" style="margin-left: auto;">
+            <i :data-lucide="selectedPathsSet.has(node.path) ? 'check-square' : 'square'" 
                class="icon-sm" 
-               :class="{ 'icon-checked': selectedPaths.includes(node.path) }">
+               :class="{ 'icon-checked': selectedPathsSet.has(node.path) }">
             </i>
           </span>
 
@@ -60,6 +61,7 @@ const FileTree = {
           v-if="node.kind === 'directory' && isExpanded(node)" 
           :nodes="node.children"
           :selected-paths="selectedPaths"
+          :selected-paths-set="selectedPathsSet"
           @select="$emit('select', $event)"
           @toggle="$emit('toggle', $event)"
           @toggle-folder="$emit('toggle-folder', $event)"
@@ -72,10 +74,12 @@ const FileTree = {
 
     const isExpanded = (node) => expandedNodes.value.includes(node.path);
 
+    // PERF: uses props.selectedPathsSet.has() — O(1) instead of O(n) includes()
     const isAllSelected = (node) => {
       if (node.kind !== "directory" || !node.children) return false;
 
-      let files = [];
+      // PERF: use accumulator-based getAllFiles to avoid intermediate arrays
+      const files = [];
       const getFiles = (n) => {
         if (n.kind === "file") files.push(n);
         else if (n.children) n.children.forEach(getFiles);
@@ -84,30 +88,18 @@ const FileTree = {
 
       if (files.length === 0) return false;
 
-      // Determine selection state based only on non-blacklisted files
       const safeFiles = files.filter((f) => {
         const ext = f.name.toLowerCase();
-        // Basic inline check for UI state
         return ![
-          ".png",
-          ".jpg",
-          ".jpeg",
-          ".gif",
-          ".svg",
-          ".ico",
-          ".pdf",
-          ".zip",
-          ".rar",
-          ".exe",
-          ".jar",
-          ".class",
-          ".mp4",
-          ".mp3",
+          ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
+          ".pdf", ".zip", ".rar", ".exe", ".jar", ".class",
+          ".mp4", ".mp3",
         ].some((e) => ext.endsWith(e));
       });
 
       if (safeFiles.length === 0) return false;
-      return safeFiles.every((f) => props.selectedPaths.includes(f.path));
+      // PERF: O(1) Set.has() instead of O(n) Array.includes()
+      return safeFiles.every((f) => props.selectedPathsSet.has(f.path));
     };
 
     const handleInteraction = (node) => {
@@ -141,16 +133,60 @@ const app = createApp({
     const selectedPaths = ref([]);
     const selectedNodes = ref([]);
 
+    // PERF: O(1) lookup Set — derived from selectedPaths, auto-updates reactively
+    const selectedPathsSet = computed(() => new Set(selectedPaths.value));
+
     const currentLanguage = ref('language-javascript');
 
     const blockEnvFiles = ref(true);
-    const customIgnores = ref("target, __pycache__, build, .next");
+    // COMMITTED ignore state — only updated when user presses Apply
+    const ignoreTags = ref(["node_modules", ".git", "dist", "build", "target", ".idea", ".vscode", "__pycache__", ".next"]);
+
+    // DRAFT state — temp copies while Settings modal is open
+    // Discarded on Cancel/close, committed to ignoreTags on Apply
+    const draftIgnoreTags = ref([]);
+    const draftIgnoreInput = ref("");
+
+    const openSettings = () => {
+      // Clone committed state into draft — user works on this copy
+      draftIgnoreTags.value = [...ignoreTags.value];
+      draftIgnoreInput.value = "";
+      showSettings.value = true;
+    };
+
+    const addIgnoreTag = () => {
+      const entries = draftIgnoreInput.value.split(',').map(s => s.trim()).filter(Boolean);
+      entries.forEach(entry => {
+        if (entry && !draftIgnoreTags.value.includes(entry)) {
+          draftIgnoreTags.value.push(entry);
+        }
+      });
+      draftIgnoreInput.value = "";
+    };
+
+    const removeIgnoreTag = (index) => {
+      draftIgnoreTags.value.splice(index, 1);
+    };
+
+    const handleIgnoreKeydown = (e) => {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        addIgnoreTag();
+      } else if (e.key === 'Backspace' && draftIgnoreInput.value === '' && draftIgnoreTags.value.length > 0) {
+        draftIgnoreTags.value.pop();
+      }
+    };
+
     const showSettings = ref(false);
     
     const showExportModal = ref(false);
     const exportFormat = ref("txt");
 
     const applySettings = async () => {
+      // Commit any text still in the input field first
+      if (draftIgnoreInput.value.trim()) addIgnoreTag();
+      // Commit draft → committed state
+      ignoreTags.value = [...draftIgnoreTags.value];
       if (rootHandle.value) {
         await reScanFolder();
       }
@@ -160,7 +196,8 @@ const app = createApp({
       if (!rootHandle.value) return;
       
       fileContent.value = "// Filter applied. Project folder re-scanned.";
-      const children = await scanDirectory(rootHandle.value, rootHandle.value.name);
+      // PERF: ignoreTags is already an array — pass directly, no parsing needed
+      const children = await scanDirectory(rootHandle.value, rootHandle.value.name, ignoreTags.value);
       projectTree.value = [
         {
           name: rootHandle.value.name,
@@ -193,15 +230,16 @@ const app = createApp({
 
       fileContent.value = "// Generating Architecture Map... analyzing dependencies and imports.";
 
-      let content = `# Architecture Map: ${rootHandle.value.name}\n\n`;
-      content += `> Auto-generated by XYZ Project Mapper\n\n`;
+      // PERF: use array + join for string building instead of repeated +=
+      const parts = [];
+      parts.push(`# Architecture Map: ${rootHandle.value.name}\n\n`);
+      parts.push(`> Auto-generated by XYZ Project Mapper\n\n`);
 
       // 1. Project Structure
-      content += `## 🗂️ Project Structure\n\`\`\`text\n`;
-      content += generateTreeString(projectTree.value);
-      content += `\`\`\`\n\n`;
+      parts.push(`## 🗂️ Project Structure\n\`\`\`text\n`);
+      parts.push(generateTreeString(projectTree.value));
+      parts.push(`\`\`\`\n\n`);
 
-      // Helper to find file in tree
       const allFiles = getAllFilesInFolder(projectTree.value[0]);
       
       // 2. Tech Stack (Package.json heuristics)
@@ -211,53 +249,51 @@ const app = createApp({
           const file = await packageJsonNode.handle.getFile();
           const text = await file.text();
           const pkg = JSON.parse(text);
-          content += `## 📦 Tech Stack & Dependencies (package.json)\n`;
+          parts.push(`## 📦 Tech Stack & Dependencies (package.json)\n`);
           if (pkg.dependencies) {
-            content += `**Dependencies:**\n`;
+            parts.push(`**Dependencies:**\n`);
             for (const [dep, ver] of Object.entries(pkg.dependencies)) {
-              content += `- \`${dep}\`: ${ver}\n`;
+              parts.push(`- \`${dep}\`: ${ver}\n`);
             }
           }
           if (pkg.devDependencies) {
-            content += `\n**Dev Dependencies:**\n`;
+            parts.push(`\n**Dev Dependencies:**\n`);
             for (const [dep, ver] of Object.entries(pkg.devDependencies)) {
-              content += `- \`${dep}\`: ${ver}\n`;
+              parts.push(`- \`${dep}\`: ${ver}\n`);
             }
           }
-          content += `\n`;
+          parts.push(`\n`);
         } catch (e) {
           console.warn('Could not parse package.json', e);
         }
       }
 
       // 3. Module Connections (Heuristics)
-      content += `## 🔗 Module Connections (Import Heuristics)\n`;
-      content += `*Extracting import/require statements from source files.*\n\n`;
+      parts.push(`## 🔗 Module Connections (Import Heuristics)\n`);
+      parts.push(`*Extracting import/require statements from source files.*\n\n`);
       
       const sourceExts = ['.js', '.ts', '.jsx', '.tsx', '.vue', '.py'];
       for (const node of allFiles) {
         if (sourceExts.some(ext => node.name.toLowerCase().endsWith(ext))) {
           try {
             const file = await node.handle.getFile();
-            // Don't read files that are too large to prevent freezing
-            if (file.size > 500000) continue; 
+            if (file.size > 500_000) continue;
             const text = await file.text();
             
-            // Simple regex for imports
             const importRegex = /(?:import|from)\s+['"]([^'"]+)['"]|(?:require)\(['"]([^'"]+)['"]\)/g;
             const matches = [...text.matchAll(importRegex)];
             
             if (matches.length > 0) {
-              content += `### \`${node.path}\`\n`;
+              parts.push(`### \`${node.path}\`\n`);
               const deps = new Set();
               matches.forEach(m => {
                 const dep = m[1] || m[2];
                 if (dep) deps.add(dep);
               });
               deps.forEach(dep => {
-                content += `- depends on: \`${dep}\`\n`;
+                parts.push(`- depends on: \`${dep}\`\n`);
               });
-              content += `\n`;
+              parts.push(`\n`);
             }
           } catch(e) {
             // ignore unreadable files
@@ -265,66 +301,59 @@ const app = createApp({
         }
       }
 
+      const content = parts.join('');
       fileContent.value = "// Architecture Map generation complete. See downloaded file.";
 
-      const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `ArchitectureMap_${rootHandle.value.name}.md`;
-      link.click();
-      URL.revokeObjectURL(url);
+      const filename = `ArchitectureMap_${rootHandle.value.name}.md`;
+      const mimeType = "text/markdown;charset=utf-8";
+
+      if ('showSaveFilePicker' in window) {
+        try {
+          const fileHandle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'Markdown File',
+              accept: { 'text/markdown': ['.md'] }
+            }]
+          });
+          const writable = await fileHandle.createWritable();
+          await writable.write(content);
+          await writable.close();
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            console.error('Save file failed:', err);
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(url);
+          }
+        }
+      } else {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
     };
 
     // --- BLACKLIST LOGIC ---
     const blacklistExts = [
       // Images & Graphics
-      ".png",
-      ".jpg",
-      ".jpeg",
-      ".gif",
-      ".svg",
-      ".ico",
-      ".webp",
-      ".bmp",
-      ".psd",
-      ".ai",
+      ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".bmp", ".psd", ".ai",
       // Fonts
-      ".ttf",
-      ".woff",
-      ".woff2",
-      ".eot",
-      ".otf",
+      ".ttf", ".woff", ".woff2", ".eot", ".otf",
       // Archives, Executables & System files
-      ".zip",
-      ".rar",
-      ".7z",
-      ".tar",
-      ".gz",
-      ".exe",
-      ".dll",
-      ".so",
-      ".bin",
-      ".msi",
-      ".DS_Store",
+      ".zip", ".rar", ".7z", ".tar", ".gz", ".exe", ".dll", ".so", ".bin", ".msi", ".DS_Store",
       // Audio & Video
-      ".mp4",
-      ".mp3",
-      ".wav",
-      ".avi",
-      ".mkv",
-      ".mov",
-      ".flv",
+      ".mp4", ".mp3", ".wav", ".avi", ".mkv", ".mov", ".flv",
       // Databases, PDFs & Build artifacts
-      ".class",
-      ".jar",
-      ".war",
-      ".ear",
-      ".sqlite",
-      ".db",
-      ".pdf",
-      ".docx",
-      ".xlsx",
+      ".class", ".jar", ".war", ".ear", ".sqlite", ".db", ".pdf", ".docx", ".xlsx",
     ];
 
     const isSafeToRead = (fileName) => {
@@ -372,7 +401,8 @@ const app = createApp({
         selectedFileName.value = "";
         fileContent.value = "// Project folder loaded. Explorer is ready.";
 
-        const children = await scanDirectory(handle, handle.name);
+        // PERF: ignoreTags is already an array — pass directly, no parsing needed
+        const children = await scanDirectory(handle, handle.name, ignoreTags.value);
         projectTree.value = [
           {
             name: handle.name,
@@ -392,20 +422,12 @@ const app = createApp({
       }
     };
 
-    const scanDirectory = async (handle, parentPath = "") => {
+    // PERF: ignoreList is now a parameter, parsed once by caller instead of re-computed per directory
+    const scanDirectory = async (handle, parentPath = "", ignoreList = []) => {
       const nodes = [];
-      const ignoreList = customIgnores.value.split(',').map(i => i.trim()).filter(Boolean);
 
       for await (const entry of handle.values()) {
-        if (
-          entry.name === "node_modules" ||
-          entry.name === ".git" ||
-          entry.name === "dist" ||
-          entry.name === ".idea" ||
-          entry.name === ".vscode" ||
-          ignoreList.includes(entry.name)
-        )
-          continue;
+        if (ignoreList.includes(entry.name)) continue;
 
         if (blockEnvFiles.value && entry.kind === "file") {
           if (entry.name === ".env" || (entry.name.startsWith(".env.") && entry.name !== ".env.example")) {
@@ -423,7 +445,7 @@ const app = createApp({
         };
 
         if (entry.kind === "directory") {
-          node.children = await scanDirectory(entry, currentPath);
+          node.children = await scanDirectory(entry, currentPath, ignoreList);
         }
         nodes.push(node);
       }
@@ -451,32 +473,28 @@ const app = createApp({
         selectedPaths.value.push(node.path);
         selectedNodes.value.push(node);
       }
-      refreshIcons();
+      // PERF: removed redundant refreshIcons() — Vue's :key bindings re-render icons automatically
     };
 
-    const getAllFilesInFolder = (node) => {
-      let files = [];
+    // PERF: accumulator pattern — avoids creating intermediate arrays on each recursive call
+    const getAllFilesInFolder = (node, acc = []) => {
       if (node.kind === "file") {
-        files.push(node);
+        acc.push(node);
       } else if (node.kind === "directory" && node.children) {
-        node.children.forEach((child) => {
-          files = files.concat(getAllFilesInFolder(child));
-        });
+        node.children.forEach((child) => getAllFilesInFolder(child, acc));
       }
-      return files;
+      return acc;
     };
 
     const toggleFolderSelection = (folderNode) => {
       const allFiles = getAllFilesInFolder(folderNode);
 
-      // FILTER: Keep only readable/safe files
       const safeFiles = allFiles.filter((f) => isSafeToRead(f.name));
 
       if (safeFiles.length === 0) return;
 
-      const allSelected = safeFiles.every((f) =>
-        selectedPaths.value.includes(f.path),
-      );
+      // PERF: use selectedPathsSet (O(1) has) for the allSelected check
+      const allSelected = safeFiles.every((f) => selectedPathsSet.value.has(f.path));
 
       if (allSelected) {
         // Deselect all safe files
@@ -488,15 +506,15 @@ const app = createApp({
           (n) => !pathsToRemove.has(n.path),
         );
       } else {
-        // Select all safe files
+        // Select all safe files — skip if already in set (O(1) check)
         safeFiles.forEach((f) => {
-          if (!selectedPaths.value.includes(f.path)) {
+          if (!selectedPathsSet.value.has(f.path)) {
             selectedPaths.value.push(f.path);
             selectedNodes.value.push(f);
           }
         });
       }
-      refreshIcons();
+      // PERF: removed redundant refreshIcons() — Vue's :key bindings re-render icons automatically
     };
 
     const previewFile = async (node) => {
@@ -509,6 +527,13 @@ const app = createApp({
           // Block reading blacklisted files
           if (!isSafeToRead(file.name)) {
             fileContent.value = `// ⚠️ Preview skipped: File [${file.name}] is an unsupported format (Blacklisted).`;
+            return;
+          }
+
+          // PERF: skip rendering very large files to prevent UI freeze
+          const MAX_PREVIEW_BYTES = 500_000; // 500 KB
+          if (file.size > MAX_PREVIEW_BYTES) {
+            fileContent.value = `// ⚠️ File quá lớn để preview (${(file.size / 1024).toFixed(0)} KB).\n// File vẫn sẽ được include trong Export nếu được chọn.`;
             return;
           }
 
@@ -540,35 +565,35 @@ const app = createApp({
     };
 
     const generateTreeString = (nodes, prefix = "") => {
-      let result = "";
+      // PERF: array + join instead of string concatenation
+      const parts = [];
       nodes.forEach((node, index) => {
         const isLast = index === nodes.length - 1;
         const connector = isLast ? "└── " : "├── ";
-
-        result += `${prefix}${connector}${node.name}\n`;
-
+        parts.push(`${prefix}${connector}${node.name}\n`);
         if (node.kind === "directory" && node.children) {
           const newPrefix = prefix + (isLast ? "    " : "│   ");
-          result += generateTreeString(node.children, newPrefix);
+          parts.push(generateTreeString(node.children, newPrefix));
         }
       });
-      return result;
+      return parts.join('');
     };
 
     const generateExportContent = async () => {
       if (!rootHandle.value) return "";
       
       fileContent.value = "// Generating export content... this might take a moment if many files are selected.";
-      let finalContent = "";
+      // PERF: use array + join for string building — avoids creating O(n) intermediate strings
+      const parts = [];
       const format = exportFormat.value;
 
       if (selectedNodes.value.length > 0) {
         if (format === 'xml') {
-          finalContent += `<documents count="${selectedNodes.value.length}">\n\n`;
+          parts.push(`<documents count="${selectedNodes.value.length}">\n\n`);
         } else if (format === 'md') {
-          finalContent += `# EXPORTED FILES (${selectedNodes.value.length})\n\n`;
+          parts.push(`# EXPORTED FILES (${selectedNodes.value.length})\n\n`);
         } else {
-          finalContent += `📦 EXPORTED FILES (${selectedNodes.value.length}):\n\n`;
+          parts.push(`📦 EXPORTED FILES (${selectedNodes.value.length}):\n\n`);
         }
 
         for (const node of selectedNodes.value) {
@@ -576,54 +601,54 @@ const app = createApp({
             const file = await node.handle.getFile();
             
             if (format === 'xml') {
-              finalContent += `<document path="${node.path}">\n`;
+              parts.push(`<document path="${node.path}">\n`);
             } else if (format === 'md') {
               const ext = node.name.split('.').pop();
-              finalContent += `## \`${node.path}\`\n\`\`\`${ext}\n`;
+              parts.push(`## \`${node.path}\`\n\`\`\`${ext}\n`);
             } else {
-              finalContent += `--- Start of file: ${node.path} ---\n`;
+              parts.push(`--- Start of file: ${node.path} ---\n`);
             }
 
             if (!isSafeToRead(file.name)) {
-              if (format === 'xml') finalContent += `<!-- Preview skipped: Unsupported or binary format -->\n`;
-              else finalContent += `[Preview skipped: Unsupported or binary format]\n`;
+              if (format === 'xml') parts.push(`<!-- Preview skipped: Unsupported or binary format -->\n`);
+              else parts.push(`[Preview skipped: Unsupported or binary format]\n`);
             } else {
               const text = await file.text();
               if (format === 'xml') {
-                finalContent += `<![CDATA[\n${text}\n]]>\n`;
+                parts.push(`<![CDATA[\n${text}\n]]>\n`);
               } else {
-                finalContent += text + (text.endsWith('\n') ? "" : "\n");
+                parts.push(text + (text.endsWith('\n') ? "" : "\n"));
               }
             }
             
             if (format === 'xml') {
-              finalContent += `</document>\n\n`;
+              parts.push(`</document>\n\n`);
             } else if (format === 'md') {
-              finalContent += `\`\`\`\n\n`;
+              parts.push(`\`\`\`\n\n`);
             } else {
-              finalContent += `--- End of file ---\n\n`;
+              parts.push(`--- End of file ---\n\n`);
             }
           } catch (e) {
-            if (format === 'xml') finalContent += `<!-- Error reading file -->\n\n`;
-            else finalContent += `[Error reading file]\n\n`;
+            if (format === 'xml') parts.push(`<!-- Error reading file -->\n\n`);
+            else parts.push(`[Error reading file]\n\n`);
           }
         }
         
         if (format === 'xml') {
-          finalContent += `</documents>\n`;
+          parts.push(`</documents>\n`);
         }
       } else {
         const treeStr = generateTreeString(projectTree.value);
         if (format === 'xml') {
-          finalContent = `<project-structure>\n<![CDATA[\n${treeStr}]]>\n</project-structure>\n\n`;
+          parts.push(`<project-structure>\n<![CDATA[\n${treeStr}]]>\n</project-structure>\n\n`);
         } else if (format === 'md') {
-          finalContent = `# 🗂️ PROJECT STRUCTURE\n\`\`\`text\n${treeStr}\`\`\`\n\n`;
+          parts.push(`# 🗂️ PROJECT STRUCTURE\n\`\`\`text\n${treeStr}\`\`\`\n\n`);
         } else {
-          finalContent = "🗂️ PROJECT STRUCTURE:\n" + treeStr + "\n\n";
+          parts.push("🗂️ PROJECT STRUCTURE:\n" + treeStr + "\n\n");
         }
       }
       
-      return finalContent;
+      return parts.join('');
     };
 
     const downloadExport = async () => {
@@ -631,15 +656,45 @@ const app = createApp({
       if (!content) return;
       
       const ext = exportFormat.value;
-      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `MapperProject_${rootHandle.value.name}.${ext}`;
-      link.click();
-      URL.revokeObjectURL(url);
+      const filename = `MapperProject_${rootHandle.value.name}.${ext}`;
+      const mimeType = "text/plain;charset=utf-8";
       
-      fileContent.value = `// Export complete. File downloaded as .${ext}`;
+      if ('showSaveFilePicker' in window) {
+        try {
+          const fileHandle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'Exported File',
+              accept: { 'text/plain': [`.${ext}`] }
+            }]
+          });
+          const writable = await fileHandle.createWritable();
+          await writable.write(content);
+          await writable.close();
+          fileContent.value = `// Export complete. File saved as .${ext}`;
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            console.error('Save file failed:', err);
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(url);
+            fileContent.value = `// Export complete. File downloaded as .${ext}`;
+          }
+        }
+      } else {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+        fileContent.value = `// Export complete. File downloaded as .${ext}`;
+      }
       showExportModal.value = false;
     };
 
@@ -664,6 +719,7 @@ const app = createApp({
       fileContent,
       selectedPaths,
       selectedNodes,
+      selectedPathsSet,
       sidebarWidth,
       isResizing,
       startResize,
@@ -677,7 +733,13 @@ const app = createApp({
       copyExport,
       exportArchitectureMap,
       blockEnvFiles,
-      customIgnores,
+      ignoreTags,
+      draftIgnoreTags,
+      draftIgnoreInput,
+      openSettings,
+      addIgnoreTag,
+      removeIgnoreTag,
+      handleIgnoreKeydown,
       showSettings,
       applySettings,
       reScanFolder,
