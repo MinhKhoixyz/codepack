@@ -3,15 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>XYZ Project Mapper 🗺️</title>
+    <title>CodePack</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2338bdf8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z'/%3E%3Cpath d='m3.3 7 8.7 5 8.7-5'/%3E%3Cpath d='M12 22V12'/%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css"
       rel="stylesheet"
     />
 
@@ -20,11 +25,21 @@
     <script src="https://unpkg.com/lucide@0.525.0"></script>
   </head>
   <body :class="{ 'is-resizing': isResizing }">
-    <div id="app" class="container" v-cloak>
+    <div id="app" class="container" v-cloak :class="{ 'drag-active': isDragging }">
+      
+      <!-- Drag Overlay -->
+      <div v-if="isDragging" class="drag-overlay">
+        <div class="drag-content">
+          <i data-lucide="upload-cloud"></i>
+          <h2>Drop your project folder here</h2>
+        </div>
+      </div>
+
       <header class="main-header">
         <div class="logo-area">
-          <div>
-            <h1>XYZ Project Mapper</h1>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <i data-lucide="box" style="color: var(--accent); width: 28px; height: 28px; stroke-width: 2.5px;"></i>
+            <h1 style="margin: 0; font-size: 1.5rem;">CodePack</h1>
           </div>
         </div>
         <div class="header-actions">
@@ -126,11 +141,20 @@
                 <span class="setting-label">Format</span>
                 <span class="setting-desc">Choose the output format for the LLM</span>
               </div>
-              <select v-model="exportFormat" class="setting-input" style="width: 150px; cursor: pointer;">
-                <option value="txt">Plain Text (.txt)</option>
-                <option value="md">Markdown (.md)</option>
-                <option value="xml">XML Tags (.xml)</option>
-              </select>
+              <div class="segmented-control">
+                <label class="segment-label" :class="{ active: exportFormat === 'xml' }">
+                  <input type="radio" v-model="exportFormat" value="xml" />
+                  XML Tags
+                </label>
+                <label class="segment-label" :class="{ active: exportFormat === 'md' }">
+                  <input type="radio" v-model="exportFormat" value="md" />
+                  Markdown
+                </label>
+                <label class="segment-label" :class="{ active: exportFormat === 'txt' }">
+                  <input type="radio" v-model="exportFormat" value="txt" />
+                  Plain Text
+                </label>
+              </div>
             </div>
           </div>
 
@@ -154,7 +178,7 @@
         <div v-if="!rootHandle" class="welcome-area">
           <div class="welcome-card">
             <i data-lucide="folder-search" class="welcome-icon"></i>
-            <h2>Map Your Project</h2>
+            <h2>Pack your codebase</h2>
             <p>Select your root directory</p>
             <button class="btn-lg" @click="selectFolder">
               <i data-lucide="folder-open"></i> Open Project Folder
@@ -221,9 +245,7 @@
               </div>
             </div>
             <div class="code-viewer-container">
-              <pre
-                class="code-viewer"
-              ><code :class="currentLanguage">{{ fileContent }}</code></pre>
+              <pre class="code-viewer line-numbers" :key="selectedFileName"><code :class="currentLanguage">{{ fileContent }}</code></pre>
             </div>
           </section>
         </div>
@@ -231,6 +253,7 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-autoloader.min.js"></script>
     <script src="assets/js/app.js"></script>
   </body>
