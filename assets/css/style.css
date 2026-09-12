@@ -17,7 +17,7 @@
     rgba(129, 140, 248, 0.15)
   );
   --font-ui: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-code: "Fira Code", monospace;
+  --font-code: "Consolas", "Monaco", "Menlo", monospace;
 }
 
 [v-cloak] {
@@ -665,7 +665,6 @@ input:checked + .toggle-slider:before {
 pre[class*="language-"] {
   background: transparent !important;
   margin: 0 !important;
-  padding: 0 !important;
   text-shadow: none !important;
 }
 
@@ -846,7 +845,7 @@ button:active {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-top: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 20px;
-  width: 480px;
+  width: 640px;
   max-width: 90vw;
   box-shadow:
     0 30px 80px rgba(0, 0, 0, 0.9),
@@ -1098,5 +1097,100 @@ button:active {
 
 .ignore-tag-input::placeholder {
   color: rgba(148, 163, 184, 0.35);
+}
+
+
+/* ---------- SEGMENTED CONTROL ---------- */
+.segmented-control {
+  display: flex;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  gap: 4px;
+  flex: 1;
+  max-width: 400px;
+}
+
+.segment-label {
+  flex: 1;
+  text-align: center;
+  position: relative;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.segment-label:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+}
+
+.segment-label.active {
+  background: var(--selected-item);
+  color: var(--text-main);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.segment-label input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+}
+
+
+/* ---------- DRAG OVERLAY ---------- */
+.drag-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 9, 19, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 4px dashed var(--accent);
+  transition: all 0.3s ease;
+}
+
+.drag-content {
+  text-align: center;
+  color: var(--accent);
+  transform: scale(1);
+  animation: pulseDrag 2s infinite ease-in-out;
+}
+
+.drag-content svg {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 20px;
+  filter: drop-shadow(0 0 20px var(--accent-glow));
+}
+
+.drag-content h2 {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+}
+
+@keyframes pulseDrag {
+  0% { transform: scale(0.95); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(0.95); }
+}
+
+#app.drag-active {
+  pointer-events: none; /* Prevents children from firing dragleave */
 }
 

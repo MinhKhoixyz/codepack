@@ -1,19 +1,19 @@
 <div align="center">
-  <h1>XYZ Project Mapper 🗺️</h1>
+  <h1>CodePack 📦</h1>
   <p><strong>Package your codebase into perfectly formatted AI context — right in your browser.</strong></p>
 
   <p>
-    <a href="https://github.com/MinhKhoixyz/xyz-project-mapper/actions/workflows/deploy.yml"><img src="https://github.com/MinhKhoixyz/xyz-project-mapper/actions/workflows/deploy.yml/badge.svg" alt="Deploy Status" /></a>
-    <a href="https://minhkhoixyz.github.io/xyz-project-mapper/"><img src="https://img.shields.io/badge/Live-Demo-brightgreen.svg" alt="Live Demo" /></a>
-    <a href="https://github.com/MinhKhoixyz/xyz-project-mapper/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License" /></a>
+    <a href="https://github.com/MinhKhoixyz/codepack/actions/workflows/deploy.yml"><img src="https://github.com/MinhKhoixyz/codepack/actions/workflows/deploy.yml/badge.svg" alt="Deploy Status" /></a>
+    <a href="https://minhkhoixyz.github.io/codepack/"><img src="https://img.shields.io/badge/Live-Demo-brightgreen.svg" alt="Live Demo" /></a>
+    <a href="https://github.com/MinhKhoixyz/codepack/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License" /></a>
   </p>
 
-  <p><a href="https://minhkhoixyz.github.io/xyz-project-mapper/">Try it now →</a></p>
+  <p><a href="https://minhkhoixyz.github.io/codepack/">Try it now →</a></p>
 </div>
 
 ---
 
-Stop manually copy-pasting files into AI chats. **XYZ Project Mapper** lets you open any project folder, select exactly the files you need, and export a single, clean context file — in the format your LLM prefers.
+Stop manually copy-pasting files into AI chats. **CodePack** lets you open any project folder, select exactly the files you need, and export a single, clean context file — in the format your LLM prefers.
 
 Zero backend. Zero install. Your code never leaves your machine.
 
@@ -29,7 +29,7 @@ Zero backend. Zero install. Your code never leaves your machine.
 
 ## 🚀 Usage
 
-No installation needed. Open the [**live demo**](https://minhkhoixyz.github.io/xyz-project-mapper/), or serve locally:
+No installation needed. Open the [**live demo**](https://minhkhoixyz.github.io/codepack/), or serve locally:
 
 ```bash
 npx serve .
